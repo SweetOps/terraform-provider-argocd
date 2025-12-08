@@ -1249,6 +1249,94 @@ func TestAccArgoCDApplication_Validate(t *testing.T) {
 	})
 }
 
+func TestAccArgoCDApplication_WaitTimedOut(t *testing.T) {
+	name := acctest.RandomWithPrefix("test-acc")
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheck(t) },
+		ProviderFactories: testAccProviders,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccArgoCDApplicationUnhealthy(name, "0.31.0", true, "non-existent-tag"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(
+						"argocd_application."+name,
+						"metadata.0.uid",
+					),
+					resource.TestCheckResourceAttr(
+						"argocd_application."+name,
+						"wait",
+						"true",
+					),
+					resource.TestCheckResourceAttr(
+						"argocd_application."+name,
+						"status.0.sync.0.status",
+						"Synced",
+					),
+				),
+			},
+			{
+				Config:   testAccArgoCDApplicationUnhealthy(name, "0.31.0", true, "non-existent-tag"),
+				PlanOnly: true,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrSet(
+						"argocd_application."+name,
+						"metadata.0.uid",
+					),
+				),
+			},
+		},
+	})
+}
+
+func testAccArgoCDApplicationUnhealthy(name, targetRevision string, wait bool, imageTag string) string {
+	return fmt.Sprintf(`
+resource "argocd_application" "%[1]s" {
+  metadata {
+	name      = "%[1]s"
+	namespace = "argocd"
+  }
+
+  spec {
+	source {
+	  repo_url        = "https://kubernetes-sigs.github.io/descheduler"
+	  chart           = "descheduler"
+	  target_revision = "%[2]s"
+	  helm {
+		parameter {
+		  name  = "image.tag"
+		  value = "%[4]s"
+		}
+		release_name = "testing-unhealthy"
+	  }
+	}
+
+	sync_policy {
+	  sync_options = ["CreateNamespace=true"]
+      retry {
+        limit = "1"
+        backoff {
+          duration     = "30s"
+          max_duration = "1m"
+          factor       = "1"
+        }
+      }
+	}
+
+	destination {
+	  server    = "https://kubernetes.default.svc"
+	  namespace = "%[1]s"
+	}
+  }
+  wait = %[3]t
+
+  timeouts {
+	create = "1m"
+  }
+}
+`, name, targetRevision, wait, imageTag)
+}
+
 func testAccArgoCDApplicationSimple(name, targetRevision string, wait bool) string {
 	return fmt.Sprintf(`
 resource "argocd_application" "%[1]s" {

@@ -52,7 +52,7 @@ func resourceArgoCDProjectCreate(ctx context.Context, d *schema.ResourceData, me
 
 	objectMeta, spec, err := expandProject(d)
 	if err != nil {
-		return errorToDiagnostics("failed to expand project", err)
+		return errorToDiagnostics(diag.Error, "failed to expand project", err)
 	}
 
 	projectName := objectMeta.Name
@@ -83,7 +83,7 @@ func resourceArgoCDProjectCreate(ctx context.Context, d *schema.ResourceData, me
 	if err != nil && !strings.Contains(err.Error(), "NotFound") {
 		tokenMutexProjectMap[projectName].Unlock()
 
-		return errorToDiagnostics(fmt.Sprintf("failed to get existing project when creating project %s", projectName), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to get existing project when creating project %s", projectName), err)
 	} else if p != nil {
 		switch p.DeletionTimestamp {
 		case nil:
@@ -149,7 +149,7 @@ func resourceArgoCDProjectRead(ctx context.Context, d *schema.ResourceData, meta
 	}
 
 	if err = flattenProject(p, d); err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to flatten project %s", d.Id()), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to flatten project %s", d.Id()), err)
 	}
 
 	return nil
@@ -167,7 +167,7 @@ func resourceArgoCDProjectUpdate(ctx context.Context, d *schema.ResourceData, me
 
 	objectMeta, spec, err := expandProject(d)
 	if err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to expand project %s", d.Id()), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to expand project %s", d.Id()), err)
 	}
 
 	if !si.IsFeatureSupported(features.ProjectSourceNamespaces) {
@@ -205,7 +205,7 @@ func resourceArgoCDProjectUpdate(ctx context.Context, d *schema.ResourceData, me
 	if err != nil {
 		tokenMutexProjectMap[projectName].Unlock()
 
-		return errorToDiagnostics(fmt.Sprintf("failed to get existing project when updating project %s", projectName), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to get existing project when updating project %s", projectName), err)
 	} else if p != nil {
 		// Kubernetes API requires providing the up-to-date correct ResourceVersion for updates
 		projectRequest.Project.ResourceVersion = p.ResourceVersion
@@ -225,7 +225,7 @@ func resourceArgoCDProjectUpdate(ctx context.Context, d *schema.ResourceData, me
 				if i != -1 {
 					tokenMutexProjectMap[projectName].Unlock()
 
-					return errorToDiagnostics(fmt.Sprintf("project role %s could not be retrieved", r.Name), err)
+					return errorToDiagnostics(diag.Error, fmt.Sprintf("project role %s could not be retrieved", r.Name), err)
 				}
 			} else { // Only preserve preexisting JWTs for managed roles if we found an existing matching project
 				projectRequest.Project.Spec.Roles[i].JWTTokens = pr.JWTTokens

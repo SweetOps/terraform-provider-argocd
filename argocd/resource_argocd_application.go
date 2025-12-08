@@ -89,7 +89,7 @@ func resourceArgoCDApplicationCreate(ctx context.Context, d *schema.ResourceData
 
 	objectMeta, spec, err := expandApplication(d, si.IsFeatureSupported(features.ApplicationSourceName))
 	if err != nil {
-		return errorToDiagnostics("failed to expand application", err)
+		return errorToDiagnostics(diag.Error, "failed to expand application", err)
 	}
 
 	apps, err := si.ApplicationClient.List(ctx, &applicationClient.ApplicationQuery{
@@ -97,7 +97,7 @@ func resourceArgoCDApplicationCreate(ctx context.Context, d *schema.ResourceData
 		AppNamespace: &objectMeta.Namespace,
 	})
 	if err != nil && !strings.Contains(err.Error(), "NotFound") {
-		return errorToDiagnostics(fmt.Sprintf("failed to list existing applications when creating application %s", objectMeta.Name), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to list existing applications when creating application %s", objectMeta.Name), err)
 	}
 
 	if apps != nil {
@@ -164,30 +164,35 @@ func resourceArgoCDApplicationCreate(ctx context.Context, d *schema.ResourceData
 	d.SetId(fmt.Sprintf("%s:%s", app.Name, objectMeta.Namespace))
 
 	if wait, ok := d.GetOk("wait"); ok && wait.(bool) {
-		if err = retry.RetryContext(ctx, d.Timeout(schema.TimeoutCreate), func() *retry.RetryError {
-			var list *application.ApplicationList
-			if list, err = si.ApplicationClient.List(ctx, &applicationClient.ApplicationQuery{
-				Name:         &app.Name,
-				AppNamespace: &app.Namespace,
-			}); err != nil {
-				return retry.NonRetryableError(fmt.Errorf("error while waiting for application %s to be synced and healthy: %s", app.Name, err))
-			}
+		if err = retry.RetryContext(
+			ctx, d.Timeout(schema.TimeoutCreate),
+			func() *retry.RetryError {
+				var list *application.ApplicationList
+				if list, err = si.ApplicationClient.List(ctx, &applicationClient.ApplicationQuery{
+					Name:         &app.Name,
+					AppNamespace: &app.Namespace,
+				}); err != nil {
+					return retry.NonRetryableError(err)
+				}
+				if len(list.Items) != 1 {
+					return retry.NonRetryableError(fmt.Errorf("found unexpected number of applications matching name '%s' and namespace '%s'. Items: %d", app.Name, app.Namespace, len(list.Items)))
+				}
 
-			if len(list.Items) != 1 {
-				return retry.NonRetryableError(fmt.Errorf("found unexpected number of applications matching name '%s' and namespace '%s'. Items: %d", app.Name, app.Namespace, len(list.Items)))
-			}
+				if list.Items[0].Status.Health.Status != health.HealthStatusHealthy {
+					return retry.RetryableError(fmt.Errorf("expected application health status to be healthy but was %s", list.Items[0].Status.Health.Status))
+				}
 
-			if list.Items[0].Status.Health.Status != health.HealthStatusHealthy {
-				return retry.RetryableError(fmt.Errorf("expected application health status to be healthy but was %s", list.Items[0].Status.Health.Status))
-			}
+				if list.Items[0].Status.Sync.Status != application.SyncStatusCodeSynced {
+					return retry.RetryableError(fmt.Errorf("expected application sync status to be synced but was %s", list.Items[0].Status.Sync.Status))
+				}
 
-			if list.Items[0].Status.Sync.Status != application.SyncStatusCodeSynced {
-				return retry.RetryableError(fmt.Errorf("expected application sync status to be synced but was %s", list.Items[0].Status.Sync.Status))
+				return nil
+			},
+		); err != nil {
+			if isTimedOut(err) {
+				return errorToDiagnostics(diag.Warning, fmt.Sprintf("waiting for application %s to be synced and healthy timed out", app.Name), err)
 			}
-
-			return nil
-		}); err != nil {
-			return errorToDiagnostics(fmt.Sprintf("error while waiting for application %s to be created", objectMeta.Name), err)
+			return errorToDiagnostics(diag.Error, fmt.Sprintf("error while waiting for application %s to be created", objectMeta.Name), err)
 		}
 	}
 
@@ -236,7 +241,7 @@ func resourceArgoCDApplicationRead(ctx context.Context, d *schema.ResourceData, 
 
 	err = flattenApplication(&apps.Items[0], d)
 	if err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to flatten application %s", appName), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to flatten application %s", appName), err)
 	}
 
 	return nil
@@ -260,7 +265,7 @@ func resourceArgoCDApplicationUpdate(ctx context.Context, d *schema.ResourceData
 
 	objectMeta, spec, err := expandApplication(d, si.IsFeatureSupported(features.ApplicationSourceName))
 	if err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to expand application %s", *appQuery.Name), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to expand application %s", *appQuery.Name), err)
 	}
 
 	l := len(spec.Sources)
@@ -323,7 +328,7 @@ func resourceArgoCDApplicationUpdate(ctx context.Context, d *schema.ResourceData
 		if err = retry.RetryContext(ctx, d.Timeout(schema.TimeoutUpdate), func() *retry.RetryError {
 			var list *application.ApplicationList
 			if list, err = si.ApplicationClient.List(ctx, appQuery); err != nil {
-				return retry.NonRetryableError(fmt.Errorf("error while waiting for application %s to be synced and healthy: %s", list.Items[0].Name, err))
+				return retry.NonRetryableError(err)
 			}
 
 			if len(list.Items) != 1 {
@@ -344,7 +349,10 @@ func resourceArgoCDApplicationUpdate(ctx context.Context, d *schema.ResourceData
 
 			return nil
 		}); err != nil {
-			return errorToDiagnostics(fmt.Sprintf("error while waiting for application %s to be updated", *appQuery.Name), err)
+			if isTimedOut(err) {
+				return errorToDiagnostics(diag.Warning, fmt.Sprintf("waiting for application %s to be synced and healthy timed out", appQuery.Name), err)
+			}
+			return errorToDiagnostics(diag.Error, fmt.Sprintf("error while waiting for application %s to be created", objectMeta.Name), err)
 		}
 	}
 
@@ -392,7 +400,7 @@ func resourceArgoCDApplicationDelete(ctx context.Context, d *schema.ResourceData
 
 			return nil
 		}); err != nil {
-			return errorToDiagnostics(fmt.Sprintf("error while waiting for application %s to be deleted", appName), err)
+			return errorToDiagnostics(diag.Error, fmt.Sprintf("error while waiting for application %s to be deleted", appName), err)
 		}
 	}
 
