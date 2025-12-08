@@ -56,7 +56,7 @@ func resourceArgoCDApplicationSetCreate(ctx context.Context, d *schema.ResourceD
 		si.IsFeatureSupported(features.ApplicationSourceName),
 	)
 	if err != nil {
-		return errorToDiagnostics("failed to expand application set", err)
+		return errorToDiagnostics(diag.Error, "failed to expand application set", err)
 	}
 
 	if !si.IsFeatureSupported(features.ApplicationSetProgressiveSync) && spec.Strategy != nil {
@@ -126,7 +126,7 @@ func resourceArgoCDApplicationSetRead(ctx context.Context, d *schema.ResourceDat
 
 	err = flattenApplicationSet(appSet, d)
 	if err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to flatten application set %s", appSetName), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to flatten application set %s", appSetName), err)
 	}
 
 	return nil
@@ -154,7 +154,7 @@ func resourceArgoCDApplicationSetUpdate(ctx context.Context, d *schema.ResourceD
 		si.IsFeatureSupported(features.ApplicationSourceName),
 	)
 	if err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to expand application set %s", d.Id()), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to expand application set %s", d.Id()), err)
 	}
 
 	if !si.IsFeatureSupported(features.ApplicationSetProgressiveSync) && spec.Strategy != nil {
