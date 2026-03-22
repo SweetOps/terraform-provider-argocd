@@ -1,6 +1,8 @@
 package argocd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 
 	fwdiag "github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
@@ -190,9 +193,9 @@ func argoCDAPIError(action, resource, id string, err error) diag.Diagnostics {
 	}
 }
 
-func errorToDiagnostics(summary string, err error) diag.Diagnostics {
+func errorToDiagnostics(severity diag.Severity, summary string, err error) diag.Diagnostics {
 	d := diag.Diagnostic{
-		Severity: diag.Error,
+		Severity: severity,
 		Summary:  summary,
 	}
 
@@ -236,4 +239,14 @@ func pluginSDKDiags(ds fwdiag.Diagnostics) diag.Diagnostics {
 	}
 
 	return diags
+}
+
+func isTimedOut(err error) bool {
+	var timeoutErr *retry.TimeoutError
+
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &timeoutErr) {
+		return true
+	}
+
+	return false
 }
