@@ -32,7 +32,7 @@ func resourceArgoCDClusterCreate(ctx context.Context, d *schema.ResourceData, me
 
 	cluster, err := expandCluster(d)
 	if err != nil {
-		return errorToDiagnostics("failed to expand cluster", err)
+		return errorToDiagnostics(diag.Error, "failed to expand cluster", err)
 	}
 
 	// Need a full lock here to avoid race conditions between List existing clusters and creating a new one
@@ -52,7 +52,7 @@ func resourceArgoCDClusterCreate(ctx context.Context, d *schema.ResourceData, me
 	})
 	if err != nil {
 		tokenMutexClusters.Unlock()
-		return errorToDiagnostics(fmt.Sprintf("failed to list existing clusters when creating cluster %s", cluster.Server), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to list existing clusters when creating cluster %s", cluster.Server), err)
 	}
 
 	// Here we will filter ourselves on the list so that we are backward compatible for argo-cd server with version < v2.8.0 (see coment above)
@@ -116,7 +116,7 @@ func resourceArgoCDClusterRead(ctx context.Context, d *schema.ResourceData, meta
 		if strings.Contains(err.Error(), "PermissionDenied") {
 			cluster, err := expandCluster(d)
 			if err != nil {
-				return errorToDiagnostics("failed to expand cluster", err)
+				return errorToDiagnostics(diag.Error, "failed to expand cluster", err)
 			}
 
 			tokenMutexClusters.RLock()
@@ -137,7 +137,7 @@ func resourceArgoCDClusterRead(ctx context.Context, d *schema.ResourceData, meta
 			tokenMutexClusters.RUnlock()
 
 			if err != nil {
-				return errorToDiagnostics(fmt.Sprintf("failed to list existing clusters when reading cluster %s", cluster.Server), err)
+				return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to list existing clusters when reading cluster %s", cluster.Server), err)
 			}
 
 			// Here we will filter ourselves on the list so that we are backward compatible for argo-cd server with version < v2.8.0 (see coment above)
@@ -160,7 +160,7 @@ func resourceArgoCDClusterRead(ctx context.Context, d *schema.ResourceData, meta
 	}
 
 	if err = flattenCluster(c, d); err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to flatten cluster %s", d.Id()), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to flatten cluster %s", d.Id()), err)
 	}
 
 	return nil
@@ -174,7 +174,7 @@ func resourceArgoCDClusterUpdate(ctx context.Context, d *schema.ResourceData, me
 
 	cluster, err := expandCluster(d)
 	if err != nil {
-		return errorToDiagnostics(fmt.Sprintf("failed to expand cluster %s", d.Id()), err)
+		return errorToDiagnostics(diag.Error, fmt.Sprintf("failed to expand cluster %s", d.Id()), err)
 	}
 
 	tokenMutexClusters.Lock()
